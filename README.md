@@ -40,9 +40,8 @@
 ### Method 1: Manual Installation (Recommended)
 
 1. **Download the addon**
-   ```
-   Download the addon zip file realese page:https://github.com/Aero-Ex/3dGen-Addon/releases/tag/1.0.0
-   ```
+   - [Download v1.0.0](https://github.com/Aero-Ex/3dGen-Addon/releases/tag/1.0.0)
+   - Or clone the repository
 
 2. **Install in Blender**
    - Open Blender
