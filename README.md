@@ -28,7 +28,7 @@
   - Tested on: RTX 4050 Laptop GPU
   - Minimum: GTX 1060 6GB or equivalent
 - **RAM**: 16GB+ recommended
-- **Storage**: 10GB+ free space for dependencies
+- **Storage**: 16GB+ free space for dependencies
 
 ### Software
 - **Blender**: 4.5 or newer
