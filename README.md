@@ -41,7 +41,7 @@
 
 1. **Download the addon**
    ```
-   Clone or download this repository
+   Download the addon zip file realese page:https://github.com/Aero-Ex/3dGen-Addon/releases/tag/1.0.0
    ```
 
 2. **Install in Blender**
