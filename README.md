@@ -238,13 +238,13 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 📮 Support
 
-- **GitHub Issues**: [Report bugs or request features](https://github.com/Aero-Ex/3d_Gen-Addon/issues)
+- **GitHub Issues**: [Report bugs or request features](https://github.com/Aero-Ex/3dGen-Addon/issues/new/choose)
 - **Documentation**: Check this README for common questions
 - **Author**: AeroX
 
 ## 🔗 Links
 
-- **GitHub Repository**: [https://github.com/Aero-Ex/3d_Gen-Addon](https://github.com/Aero-Ex/3d_Gen-Addon)
+- **GitHub Repository**: [https://github.com/Aero-Ex/3dGen-Addon](https://github.com/Aero-Ex/3d_Gen-Addon)
 - **TRELLIS Paper**: [Microsoft Research](https://github.com/microsoft/TRELLIS)
 - **Blender**: [https://www.blender.org/](https://www.blender.org/)
 
