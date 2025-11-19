@@ -59,7 +59,7 @@
 
 ```bash
 # Clone the repository
-git clone https://github.com/Aero-Ex/3d_Gen-Addon.git
+git clone https://github.com/Aero-Ex/3dGen-Addon.git
 
 # Link to Blender addons folder
 mklink /D "C:\Users\YourUsername\AppData\Roaming\Blender Foundation\Blender\4.5\scripts\addons\3d_Gen-Addon" "path\to\cloned\repo"
