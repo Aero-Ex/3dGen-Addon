@@ -333,6 +333,12 @@ class TRELLIS_OT_GenerateMultiImageConsole(Operator):
             self.report({'ERROR'}, f"Console script not found: {console_script}")
             return {'CANCELLED'}
 
+        # Final check that all images still exist
+        missing_images = [path for path in image_paths if not os.path.exists(path)]
+        if missing_images:
+            self.report({'ERROR'}, f"Some image files no longer exist: {missing_images}")
+            return {'CANCELLED'}
+
         # Build command with all parameters from props
         generation_params = [
             '--seed', str(props.seed),
@@ -369,16 +375,15 @@ class TRELLIS_OT_GenerateMultiImageConsole(Operator):
                 quoted_paths = [shlex.quote(path) for path in image_paths]
                 cmd_parts = [sys.executable, f'"{console_script}"'] + quoted_paths + generation_params
                 cmd_string = ' '.join(cmd_parts)
-                full_cmd = f'cmd.exe /k "{cmd_string}"'
+                full_cmd = f'start "TRELLIS Multi-Image Generation" cmd.exe /k "{cmd_string}"'
                 
                 print(f"   Full command: {full_cmd}\n")
                 
-                # Use creationflags to open new console window
+                # Use start to open new console window
                 process = subprocess.Popen(
                     full_cmd,
                     cwd=addon_dir,
-                    shell=True,
-                    creationflags=subprocess.CREATE_NEW_CONSOLE
+                    shell=True
                 )
                 
                 self.report({'INFO'}, f"Console launched! Generating from {len(image_paths)} images...")

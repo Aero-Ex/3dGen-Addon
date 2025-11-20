@@ -917,6 +917,12 @@ class TRELLIS_OT_GenerateImageConsole(Operator):
             '--texture-size', str(props.texture_size),
             '--mesh-simplify', str(props.simplify_mesh),
         ]
+        
+        if props.preprocess_image:
+            generation_params.append('--preprocess')
+        
+        if not props.generate_texture:
+            generation_params.append('--no-texture')
 
         print(f"\n{'='*70}")
         print("🚀 Launching generation in separate console...")
@@ -932,16 +938,15 @@ class TRELLIS_OT_GenerateImageConsole(Operator):
                 import shlex
                 cmd_parts = [sys.executable, f'"{console_script}"', f'"{props.input_image}"'] + generation_params
                 cmd_string = ' '.join(cmd_parts)
-                full_cmd = f'cmd.exe /k "{cmd_string}"'
+                full_cmd = f'start "TRELLIS Image-to-3D Generation" cmd.exe /k "{cmd_string}"'
                 
                 print(f"   Full command: {full_cmd}\n")
                 
-                # Use creationflags to open new console window
+                # Use start to open new console window
                 process = subprocess.Popen(
                     full_cmd,
                     cwd=addon_dir,
-                    shell=True,
-                    creationflags=subprocess.CREATE_NEW_CONSOLE
+                    shell=True
                 )
                 print(f"   Process launched: PID {process.pid}")
             else:
@@ -1046,16 +1051,15 @@ class TRELLIS_OT_GenerateTextConsole(Operator):
                 if not props.generate_texture:
                     cmd_parts.append('--no-texture')
                 cmd_string = ' '.join(cmd_parts)
-                full_cmd = f'cmd.exe /k "{cmd_string}"'
+                full_cmd = f'start "TRELLIS Text-to-3D Generation" cmd.exe /k "{cmd_string}"'
                 
                 print(f"   Full command: {full_cmd}\n")
                 
-                # Use creationflags to open new console window
+                # Use start to open new console window
                 process = subprocess.Popen(
                     full_cmd,
                     cwd=addon_dir,
-                    shell=True,
-                    creationflags=subprocess.CREATE_NEW_CONSOLE
+                    shell=True
                 )
                 print(f"   Process launched: PID {process.pid}")
             else:

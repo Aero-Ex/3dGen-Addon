@@ -1,0 +1,12 @@
+{
+    "generation_mode": "MULTI_IMAGE",
+    "sparse_steps": 16,
+    "sparse_cfg": 7.5,
+    "slat_steps": 14,
+    "slat_cfg": 3.0,
+    "seed": 42,
+    "preprocess_image": false,
+    "texture_size": 1024,
+    "simplify_mesh": 0.24652603268623352,
+    "generate_texture": false
+}
