@@ -119,9 +119,13 @@ def main():
             # Image-to-3D or Multi-Image mode
             if is_multi_image or len(args.input) > 1:
                 # Multi-image mode
-                image_paths = args.input
+                image_paths = [p.strip("'\"") for p in args.input]  # Strip quotes that may be added by shell
                 # Validate all paths
-                invalid_paths = [p for p in image_paths if not os.path.exists(p)]
+                invalid_paths = []
+                for p in image_paths:
+                    exists = os.path.exists(p)
+                    if not exists:
+                        invalid_paths.append(p)
                 if invalid_paths:
                     logger.error("Image file(s) not found:")
                     for p in invalid_paths:
@@ -135,7 +139,7 @@ def main():
                     logger.plain(f"{i}. {os.path.basename(path)}", indent=2)
             else:
                 # Single image mode
-                image_path = args.input[0]
+                image_path = args.input[0].strip("'\"")
                 if not os.path.exists(image_path):
                     logger.error(f"Image file not found: {image_path}")
                     logger.plain("\nPress Enter to close...", indent=1)
