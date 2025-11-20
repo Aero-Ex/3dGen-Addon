@@ -130,6 +130,12 @@ class TRELLIS_Properties(PropertyGroup):
         default=False,
     )
 
+    generate_texture: BoolProperty(
+        name="Generate Texture",
+        description="Generate texture for mesh output",
+        default=True,
+    )
+
     # Output settings
     simplify_mesh: FloatProperty(
         name="Simplify Mesh",
@@ -214,7 +220,7 @@ class TRELLIS_OT_InstallDependencies(Operator):
                 # Use cmd /k to keep console open
                 # Format: start "title" cmd /k "python.exe script.py && pause"
                 # The && pause keeps it open after completion
-                cmd = f'start "TRELLIS Installation" cmd /k "cd /d "{addon_dir}" && "{python_exe}" "{script_path}" && pause"'
+                cmd = f'start "TRELLIS Installation" cmd /k "cd /d \\"{addon_dir}\\" && \\"{python_exe}\\" \\"{script_path}\\" && pause"'
 
                 print(f"   Command: {cmd}")
 
@@ -559,7 +565,7 @@ class TRELLIS_OT_InitializePipeline(Operator):
                 script_path = init_script
 
                 # Use cmd /k to keep console open
-                cmd = f'start "TRELLIS Initialization" cmd /k "cd /d "{addon_dir}" && "{python_exe}" "{script_path}" && pause"'
+                cmd = f'start "TRELLIS Initialization" cmd /k "cd /d \\"{addon_dir}\\" && \\"{python_exe}\\" \\"{script_path}\\" && pause"'
 
                 print(f"   Command: {cmd}")
 
@@ -922,20 +928,19 @@ class TRELLIS_OT_GenerateImageConsole(Operator):
 
         try:
             if platform.system() == 'Windows':
-                # Windows: Use proper command list to avoid argument parsing issues
-                cmd = [
-                    'cmd.exe', '/k',
-                    sys.executable,
-                    console_script,
-                    props.input_image
-                ] + generation_params
+                # Windows: Build command as single string for cmd.exe
+                import shlex
+                cmd_parts = [sys.executable, f'"{console_script}"', f'"{props.input_image}"'] + generation_params
+                cmd_string = ' '.join(cmd_parts)
+                full_cmd = f'cmd.exe /k "{cmd_string}"'
                 
-                print(f"   Full command: {' '.join(cmd)}\n")
+                print(f"   Full command: {full_cmd}\n")
                 
                 # Use creationflags to open new console window
                 process = subprocess.Popen(
-                    cmd,
+                    full_cmd,
                     cwd=addon_dir,
+                    shell=True,
                     creationflags=subprocess.CREATE_NEW_CONSOLE
                 )
                 print(f"   Process launched: PID {process.pid}")
@@ -1027,14 +1032,9 @@ class TRELLIS_OT_GenerateTextConsole(Operator):
 
         try:
             if platform.system() == 'Windows':
-                # Windows: Build proper command with quoted text prompt
-                # The text prompt needs to be a single argument
-                cmd = [
-                    'cmd.exe', '/k',
-                    sys.executable,
-                    console_script,
-                    '--text',
-                    props.text_prompt,  # Text prompt as separate argument
+                # Windows: Build command as single string for cmd.exe
+                import shlex
+                cmd_parts = [sys.executable, f'"{console_script}"', '--text', shlex.quote(props.text_prompt)] + [
                     '--seed', str(seed),
                     '--sparse-steps', str(props.sparse_steps),
                     '--sparse-cfg', str(props.sparse_cfg),
@@ -1043,13 +1043,18 @@ class TRELLIS_OT_GenerateTextConsole(Operator):
                     '--texture-size', str(props.texture_size),
                     '--mesh-simplify', str(props.simplify_mesh),
                 ]
+                if not props.generate_texture:
+                    cmd_parts.append('--no-texture')
+                cmd_string = ' '.join(cmd_parts)
+                full_cmd = f'cmd.exe /k "{cmd_string}"'
                 
-                print(f"   Full command: {' '.join(cmd)}\n")
+                print(f"   Full command: {full_cmd}\n")
                 
                 # Use creationflags to open new console window
                 process = subprocess.Popen(
-                    cmd,
+                    full_cmd,
                     cwd=addon_dir,
+                    shell=True,
                     creationflags=subprocess.CREATE_NEW_CONSOLE
                 )
                 print(f"   Process launched: PID {process.pid}")
@@ -1068,6 +1073,20 @@ class TRELLIS_OT_GenerateTextConsole(Operator):
                     '--texture-size', str(props.texture_size),
                     '--mesh-simplify', str(props.simplify_mesh),
                 ]
+                terminals = [
+                    console_script,
+                    '--text',
+                    props.text_prompt,
+                    '--seed', str(seed),
+                    '--sparse-steps', str(props.sparse_steps),
+                    '--sparse-cfg', str(props.sparse_cfg),
+                    '--slat-steps', str(props.slat_steps),
+                    '--slat-cfg', str(props.slat_cfg),
+                    '--texture-size', str(props.texture_size),
+                    '--mesh-simplify', str(props.simplify_mesh),
+                ]
+                if not props.generate_texture:
+                    base_cmd.append('--no-texture')
                 terminals = [
                     ['gnome-terminal', '--'] + base_cmd,
                     ['konsole', '-e'] + base_cmd,

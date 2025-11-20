@@ -31,6 +31,7 @@ def main():
     parser.add_argument('--mesh-simplify', type=float, default=0.95, help='Mesh simplification ratio')
     parser.add_argument('--multi-image', action='store_true', help='Multi-image generation mode')
     parser.add_argument('--preprocess', action='store_true', help='Remove background from images')
+    parser.add_argument('--no-texture', action='store_true', help='Skip texture generation (mesh only)')
 
     args = parser.parse_args()
     
@@ -103,6 +104,11 @@ def main():
         image_paths = []
         text_prompt = None
         is_multi_image = args.multi_image
+        
+        # Determine formats
+        formats = ['mesh', 'gaussian']
+        if args.no_texture:
+            formats = ['mesh']
 
         if args.text:
             # Text-to-3D mode
@@ -181,6 +187,7 @@ def main():
         logger.plain(f"Texture Size: {texture_size}x{texture_size}", indent=1)
         logger.plain(f"Mesh Simplify: {mesh_simplify}", indent=1)
         logger.plain(f"Preprocess (Remove BG): {args.preprocess}", indent=1)
+        logger.plain(f"Generate Texture: {not args.no_texture}", indent=1)
         logger.plain("")
 
         if image_paths and len(image_paths) > 1 and is_multi_image:
@@ -194,7 +201,7 @@ def main():
                 slat_steps=slat_steps,
                 slat_cfg=slat_cfg,
                 preprocess=args.preprocess,
-                formats=['mesh', 'gaussian']
+                formats=formats
             )
         elif image_paths:
             # Single image generation
@@ -207,7 +214,7 @@ def main():
                 slat_steps=slat_steps,
                 slat_cfg=slat_cfg,
                 preprocess=args.preprocess,
-                formats=['mesh', 'gaussian']
+                formats=formats
             )
         else:
             # Text generation
@@ -219,7 +226,7 @@ def main():
                 sparse_cfg=sparse_cfg,
                 slat_steps=slat_steps,
                 slat_cfg=slat_cfg,
-                formats=['mesh', 'gaussian']
+                formats=formats
             )
 
         if outputs:
@@ -283,4 +290,3 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
-

@@ -156,6 +156,7 @@ TRELLIS_DEPENDENCIES = [
     'diffusers==0.30.3',
     'accelerate==0.34.2',
     'huggingface-hub==0.25.2',
+    'hf_transfer', # Faster downloads
     'onnxruntime-directml==1.16.3',  # DirectML backend for GPU acceleration
     'tokenizers==0.19.1',
     'safetensors==0.4.5',
