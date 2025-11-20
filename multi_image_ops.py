@@ -5,6 +5,7 @@ Multi-image operators and UI list for TRELLIS
 import bpy
 from bpy.types import Operator, UIList
 import os
+from .settings_manager import save_settings
 
 
 class TRELLIS_UL_ImageList(UIList):
@@ -167,6 +168,7 @@ class TRELLIS_OT_GenerateFromMultiImage(Operator):
     bl_options = {'REGISTER'}
 
     def execute(self, context):
+        save_settings(context)  # Save settings before generation
         props = context.scene.trellis_props
 
         # Check if we have images
@@ -299,6 +301,8 @@ class TRELLIS_OT_GenerateMultiImageConsole(Operator):
 
     def execute(self, context):
         """Execute the operator"""
+        save_settings(context)  # Save settings before generation
+        
         import subprocess
         import platform
         import sys
@@ -343,6 +347,9 @@ class TRELLIS_OT_GenerateMultiImageConsole(Operator):
 
         if props.preprocess_image:
             generation_params.append('--preprocess')
+        
+        if not props.generate_texture:
+            generation_params.append('--no-texture')
 
         print(f"\n{'='*70}")
         print("🚀 Launching multi-image generation in separate console...")
@@ -357,19 +364,20 @@ class TRELLIS_OT_GenerateMultiImageConsole(Operator):
 
         try:
             if platform.system() == 'Windows':
-                # Windows: Build command for multiple images
-                cmd = [
-                    'cmd.exe', '/k',
-                    sys.executable,
-                    console_script,
-                ] + image_paths + generation_params
+                # Windows: Build command as single string for cmd.exe
+                import shlex
+                quoted_paths = [shlex.quote(path) for path in image_paths]
+                cmd_parts = [sys.executable, f'"{console_script}"'] + quoted_paths + generation_params
+                cmd_string = ' '.join(cmd_parts)
+                full_cmd = f'cmd.exe /k "{cmd_string}"'
                 
-                print(f"   Full command: {' '.join(cmd)}\n")
+                print(f"   Full command: {full_cmd}\n")
                 
                 # Use creationflags to open new console window
                 process = subprocess.Popen(
-                    cmd,
+                    full_cmd,
                     cwd=addon_dir,
+                    shell=True,
                     creationflags=subprocess.CREATE_NEW_CONSOLE
                 )
                 

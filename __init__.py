@@ -32,6 +32,7 @@ from bpy.types import (
     PropertyGroup,
     AddonPreferences,
 )
+from bpy.app.handlers import persistent
 
 # Cache to avoid repeated path setup
 _PATHS_INITIALIZED = False
@@ -149,6 +150,7 @@ from . import operators
 from . import ui
 from . import preferences
 from . import multi_image_ops
+from .settings_manager import load_settings
 
 classes = (
     preferences.TRELLIS_AddonPreferences,
@@ -170,60 +172,22 @@ classes = (
     multi_image_ops.TRELLIS_OT_GenerateFromMultiImage,
     multi_image_ops.TRELLIS_OT_GenerateMultiImageConsole,
     ui.TRELLIS_PT_MainPanel,
+    ui.TRELLIS_PT_SetupPanel,
+    ui.TRELLIS_PT_InputPanel,
+    ui.TRELLIS_PT_GenerationPanel,
+    ui.TRELLIS_PT_OutputPanel,
 )
 
-def auto_initialize():
-    """Auto-initialize TRELLIS pipeline on startup if dependencies are installed"""
-    print("TRELLIS: Auto-initialize function called")
+@persistent
+def load_settings_handler(dummy):
+    """Load settings on startup"""
     try:
-        # Check if dependencies are installed
-        from . import dependency_installer
-        venv_path = dependency_installer.get_venv_path()
-        
-        print(f"TRELLIS: Checking venv path: {venv_path}")
-        print(f"TRELLIS: Venv exists: {venv_path.exists()}")
-        
-        if not venv_path.exists():
-            print("TRELLIS: Auto-initialize skipped - dependencies not installed")
-            return None  # Return None to stop timer
-        
-        print("TRELLIS: Starting auto-initialization...")
-        
-        # Get preferences to check settings
-        try:
-            preferences = bpy.context.preferences.addons[__package__].preferences
-            use_cuda = preferences.use_cuda
-        except:
-            # Fallback if context not available
-            use_cuda = True
-            print("TRELLIS: Using default CUDA setting (True)")
-        
-        # Initialize pipeline
-        from .pipeline_manager import get_pipeline_manager
-        manager = get_pipeline_manager()
-        
-        if not manager.initialized:
-            print("TRELLIS: Initializing pipeline (this may take 1-2 minutes)...")
-            success = manager.initialize(use_cuda=use_cuda)
-            if success:
-                print("TRELLIS: ✓ Auto-initialization complete! Ready to generate.")
-                # Invalidate UI cache to show initialized status
-                try:
-                    from . import ui
-                    ui.invalidate_status_cache()
-                except:
-                    pass
-            else:
-                print("TRELLIS: ⚠ Auto-initialization failed - click Initialize button manually")
-        else:
-            print("TRELLIS: Already initialized")
-            
+        if bpy.context.scene:
+            load_settings(bpy.context)
     except Exception as e:
-        print(f"TRELLIS: Auto-initialize error: {e}")
+        print(f"TRELLIS: Error in load_settings_handler: {e}")
         import traceback
         traceback.print_exc()
-    
-    return None  # Return None to stop the timer
 
 def register():
     """Register addon classes and properties"""
@@ -233,12 +197,18 @@ def register():
     # Add properties to Scene
     bpy.types.Scene.trellis_props = PointerProperty(type=operators.TRELLIS_Properties)
     
-    # Removed auto-initialization on startup
-    # Pipeline will initialize automatically when user clicks generate
-    print("TRELLIS: Addon registered - pipeline will initialize on first generation")
+    # Register load settings handler
+    if load_settings_handler not in bpy.app.handlers.load_post:
+        bpy.app.handlers.load_post.append(load_settings_handler)
+    
+    print("TRELLIS: Addon registered")
 
 def unregister():
     """Unregister addon classes and properties"""
+    # Remove handler
+    if load_settings_handler in bpy.app.handlers.load_post:
+        bpy.app.handlers.load_post.remove(load_settings_handler)
+        
     # Remove properties from Scene
     del bpy.types.Scene.trellis_props
 

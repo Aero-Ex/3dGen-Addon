@@ -4,32 +4,49 @@ UI panels for TRELLIS addon
 
 import bpy
 from bpy.types import Panel
-import time
 import os
+import threading
 
-# Cache for installation status - only refreshed when explicitly requested
+# Cache for installation status
 _status_cache = None
 _status_initialized = False
+_status_checking = False
+_check_status_thread = None
 
+
+def _check_status_thread():
+    """Background thread to check status"""
+    global _status_cache, _status_checking, _status_initialized
+    
+    _status_cache = _refresh_status()
+    _status_initialized = True
+    _status_checking = False
+    
+    # Redraw UI to show results
+    for window in bpy.context.window_manager.windows:
+        for area in window.screen.areas:
+            if area.type == 'VIEW_3D':
+                area.tag_redraw()
 
 def get_cached_status():
     """
-    Get installation status with permanent caching
-
-    Status is only checked:
-    1. On first access (addon startup)
-    2. When explicitly invalidated by operations (Install Dependencies, etc.)
-
-    No periodic refreshes - status only changes when WE change it!
+    Get installation status with non-blocking background check
     """
-    global _status_cache, _status_initialized
+    global _status_cache, _status_checking, _status_initialized
 
-    # Check once on first access
-    if not _status_initialized:
-        _status_cache = _refresh_status()
-        _status_initialized = True
+    # If we have a result, return it
+    if _status_initialized and _status_cache is not None:
+        return _status_cache
 
-    return _status_cache
+    # If not initialized and not checking, start check
+    if not _status_initialized and not _status_checking:
+        _status_checking = True
+        thread = threading.Thread(target=_check_status_thread)
+        thread.daemon = True
+        thread.start()
+        
+    # Return loading state
+    return {'loading': True}
 
 
 def _refresh_status():
@@ -49,9 +66,10 @@ def _refresh_status():
 
 def invalidate_status_cache():
     """Force status to be rechecked on next access"""
-    global _status_cache, _status_initialized
+    global _status_cache, _status_initialized, _status_checking
     _status_initialized = False
     _status_cache = None
+    _status_checking = False
 
 
 class TRELLIS_PT_MainPanel(Panel):
@@ -64,10 +82,31 @@ class TRELLIS_PT_MainPanel(Panel):
 
     def draw(self, context):
         layout = self.layout
+        # Main panel is now just a container for sub-panels
+        # We can put global status or important messages here if needed
+        pass
+
+class TRELLIS_PT_SetupPanel(Panel):
+    """Setup and Installation Panel"""
+    bl_label = "Setup & Installation"
+    bl_idname = "TRELLIS_PT_setup_panel"
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_parent_id = "TRELLIS_PT_main_panel"
+
+    def draw(self, context):
+        layout = self.layout
         props = context.scene.trellis_props
 
-        # Get cached installation status (checked once on startup, updated only when we change it)
+        # Get cached installation status
         status = get_cached_status()
+        
+        # Handle loading state
+        if status.get('loading', False):
+            box = layout.box()
+            box.label(text="Checking dependencies...", icon='TIME')
+            return
+
         venv_exists = status.get('venv', {}).get('exists', False)
         venv_path = status.get('venv', {}).get('path', '')
         torch_installed = status.get('torch', {}).get('installed', False)
@@ -75,7 +114,7 @@ class TRELLIS_PT_MainPanel(Panel):
         trellis_installed = status.get('trellis', {}).get('installed', False)
         installation_failed = status.get('installation_failed', False)
 
-        # Get pipeline manager status (wrapped in try/except to handle DLL errors)
+        # Get pipeline manager status
         manager_initialized = False
         dll_error = False
         try:
@@ -83,27 +122,24 @@ class TRELLIS_PT_MainPanel(Panel):
             manager = get_pipeline_manager()
             manager_initialized = manager.initialized
         except Exception as e:
-            # DLL errors or import failures are handled gracefully
             error_str = str(e)
             if 'DLL' in error_str or 'c10.dll' in error_str:
                 dll_error = True
 
         # Preferences access button
         row = layout.row()
-        row.scale_y = 1.2
-        row.operator("trellis.open_preferences", icon='PREFERENCES', text="Addon Preferences (Smart Offloading)")
+        row.operator("trellis.open_preferences", icon='PREFERENCES', text="Preferences")
 
         layout.separator()
 
         # Initialization section
         box = layout.box()
-        box.label(text="Setup:", icon='SETTINGS')
+        box.label(text="Status:", icon='INFO')
 
         # Show venv status
         if venv_exists:
             col = box.column(align=True)
             col.label(text="✓ Virtual environment ready", icon='CHECKMARK')
-            # Show venv path in a compact way
             import os
             venv_folder = os.path.basename(venv_path)
             venv_parent = os.path.basename(os.path.dirname(venv_path))
@@ -112,12 +148,10 @@ class TRELLIS_PT_MainPanel(Panel):
 
         # Dependency status
         if installation_failed:
-            # Installation was attempted but failed
             box.label(text="⚠ Installation Failed!", icon='ERROR')
             row = box.row()
             row.scale_y = 1.3
             row.operator("trellis.install_dependencies", icon='FILE_REFRESH', text="Try Again")
-            box.label(text="Click 'Try Again' to reinstall", icon='INFO')
         elif not venv_exists or not torch_installed:
             box.label(text="Dependencies not installed", icon='ERROR')
             row = box.row()
@@ -128,7 +162,6 @@ class TRELLIS_PT_MainPanel(Panel):
             box.label(text="PyTorch installed, TRELLIS missing", icon='ERROR')
             box.operator("trellis.install_dependencies", icon='IMPORT')
         else:
-            # Show status
             col = box.column(align=True)
             col.label(text=f"✓ PyTorch {status['torch'].get('version', '')}", icon='CHECKMARK')
             if cuda_available:
@@ -139,18 +172,16 @@ class TRELLIS_PT_MainPanel(Panel):
 
         box.separator()
 
-        # Show DLL error warning if detected
+        # Show DLL error warning
         if dll_error:
             box.label(text="⚠ PyTorch DLL Error Detected!", icon='ERROR')
             box.label(text="Re-run 'Install Dependencies'", icon='INFO')
-            box.label(text="to fix PyTorch installation", icon='INFO')
             box.separator()
 
-        # Pipeline status (auto-initializes on first generation)
+        # Pipeline status
         if not manager_initialized:
             if torch_installed and trellis_installed and not dll_error:
                 box.label(text="Ready to generate", icon='INFO')
-                # box.label(text="(auto-initializes on first use)", icon='BLANK1')
             else:
                 if dll_error:
                     box.label(text="Fix DLL error first", icon='CANCEL')
@@ -159,123 +190,63 @@ class TRELLIS_PT_MainPanel(Panel):
         else:
             box.label(text="Pipeline ready", icon='CHECKMARK')
 
-        layout.separator()
 
-        # Advanced Settings (Generation Parameters)
-        box = layout.box()
-        box.label(text="Generation Parameters:", icon='SETTINGS')
+class TRELLIS_PT_InputPanel(Panel):
+    """Input Selection Panel"""
+    bl_label = "Input"
+    bl_idname = "TRELLIS_PT_input_panel"
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_parent_id = "TRELLIS_PT_main_panel"
+
+    def draw(self, context):
+        layout = self.layout
+        props = context.scene.trellis_props
         
-        # Seed setting
-        box.prop(props, "seed", text="Random Seed")
+        # Get status for enabling/disabling buttons
+        status = get_cached_status()
+        torch_installed = status.get('torch', {}).get('installed', False)
+        trellis_installed = status.get('trellis', {}).get('installed', False)
+        
+        # Check for DLL error
+        dll_error = False
+        try:
+            from .pipeline_manager import get_pipeline_manager
+            # Just check if import works, don't need manager instance here
+        except Exception as e:
+            if 'DLL' in str(e) or 'c10.dll' in str(e):
+                dll_error = True
 
-        # Sparse structure settings
-        col = box.column(align=True)
-        col.label(text="Sparse Structure (Stage 1):")
-        col.prop(props, "sparse_steps", text="Steps")
-        col.prop(props, "sparse_cfg", text="CFG Strength")
-
-        box.separator()
-
-        # SLAT settings
-        col = box.column(align=True)
-        col.label(text="SLAT Appearance (Stage 2):")
-        col.prop(props, "slat_steps", text="Steps")
-        col.prop(props, "slat_cfg", text="CFG Strength")
-
-        layout.separator()
-
-        # Progress indicator
-        from .pipeline_manager import get_generation_progress
-        progress = get_generation_progress()
-
-        if progress['active']:
-            box = layout.box()
-            box.label(text="Generation Progress:", icon='TIME')
-
-            col = box.column(align=True)
-            col.label(text=f"Stage: {progress['stage']}", icon='SETTINGS')
-
-            if progress['total_steps'] > 0:
-                percentage = (progress['step'] / progress['total_steps']) * 100
-                col.label(text=f"Step: {progress['step']}/{progress['total_steps']} ({percentage:.1f}%)")
-
-            if progress['message']:
-                col.label(text=f"{progress['message']}", icon='INFO')
-
-            layout.separator()
-
-        # ====================
-        # Navigation Tabs
-        # ====================
-        box = layout.box()
-        row = box.row(align=True)
+        # Mode Selection
+        row = layout.row(align=True)
         row.prop(props, "generation_mode", expand=True)
         
         layout.separator()
 
-        # ====================
         # Image to 3D Mode
-        # ====================
         if props.generation_mode == 'IMAGE':
-            box = layout.box()
-            box.label(text="Image to 3D:", icon='IMAGE_DATA')
-
-            box.prop(props, "input_image")
+            col = layout.column(align=True)
+            col.prop(props, "input_image")
             
-            # Show image preview if a valid image is selected
+            # Preview
             if props.input_image and os.path.exists(props.input_image):
-                try:
-                    # Load image into Blender if not already loaded
-                    image_name = os.path.basename(props.input_image)
-                    img = bpy.data.images.get(image_name)
-                    
-                    # If not found, load it
-                    if img is None:
-                        img = bpy.data.images.load(props.input_image, check_existing=True)
-                    
-                    if img and img.size[0] > 0:
-                        # Ensure preview is generated
-                        img.preview_ensure()
-                        
-                        # Display image preview in a box
-                        preview_box = box.box()
-                        preview_box.label(text="Image Preview:", icon='IMAGE_DATA')
-                        
-                        # Draw the image preview using template_icon with proper icon_value
-                        if img.preview and img.preview.icon_id > 0:
-                            col = preview_box.column(align=True)
-                            col.scale_y = 3.0  # Moderate size - not too big, not too small
-                            col.template_icon(icon_value=img.preview.icon_id, scale=5.0)
-                        
-                        # Show image info
-                        info_row = preview_box.row()
-                        info_row.label(text=f"Size: {img.size[0]} x {img.size[1]} px", icon='INFO')
-                except Exception as e:
-                    # If preview fails, just show a simple message
-                    info_box = box.box()
-                    info_box.label(text=f"Image: {os.path.basename(props.input_image)}", icon='IMAGE_DATA')
+                self._draw_image_preview(layout, props.input_image)
             
-            box.prop(props, "preprocess_image")
+            layout.separator()
+            layout.prop(props, "preprocess_image")
 
-            # Console generation button
-            row = box.row()
+            # Generate Button
+            row = layout.row()
             row.scale_y = 1.5
             row.operator("trellis.generate_image_console", icon='CONSOLE', text="Generate from Image")
             row.enabled = torch_installed and trellis_installed and not dll_error
 
-            layout.separator()
-
-        # ====================
-        # Multi-Image to 3D Mode
-        # ====================
+        # Multi-Image Mode
         elif props.generation_mode == 'MULTI_IMAGE':
-            box = layout.box()
-            box.label(text="Multi-Image to 3D (Multi-View):", icon='IMAGE')
-            
-            box.label(text="Select multiple images from different angles:", icon='INFO')
+            layout.label(text="Select multiple images from different angles:", icon='INFO')
 
-            # UI List for multiple images
-            row = box.row()
+            # UI List
+            row = layout.row()
             row.template_list(
                 "TRELLIS_UL_ImageList", "",
                 props, "multi_images",
@@ -283,68 +254,133 @@ class TRELLIS_PT_MainPanel(Panel):
                 rows=4
             )
 
-            # List controls
+            # Controls
             col = row.column(align=True)
             col.operator("trellis.add_multi_image", icon='ADD', text="")
             col.operator("trellis.remove_multi_image", icon='REMOVE', text="")
             col.separator()
             col.operator("trellis.clear_multi_images", icon='X', text="")
 
-            # Show count
+            # Count
             count = len(props.multi_images)
-            box.label(text=f"Images: {count}", icon='RENDERLAYERS')
+            layout.label(text=f"Images: {count}", icon='RENDERLAYERS')
             
-            # Preprocess option
-            box.prop(props, "preprocess_image", text="Remove Background")
+            layout.prop(props, "preprocess_image", text="Remove Background")
 
-            # Generate button
-            row = box.row()
+            # Generate Button
+            row = layout.row()
             row.scale_y = 1.5
             row.operator("trellis.generate_multi_image_console", icon='CONSOLE', text="Generate from Multiple Images")
             row.enabled = torch_installed and trellis_installed and not dll_error and count > 0
 
-            layout.separator()
-
-        # ====================
-        # Text to 3D Mode
-        # ====================
+        # Text Mode
         elif props.generation_mode == 'TEXT':
-            box = layout.box()
-            box.label(text="Text to 3D:", icon='TEXT')
+            layout.prop(props, "text_prompt", text="")
 
-            box.prop(props, "text_prompt", text="")
-
-            # Console generation button
-            row = box.row()
+            # Generate Button
+            row = layout.row()
             row.scale_y = 1.5
             row.operator("trellis.generate_text_console", icon='CONSOLE', text="Generate from Text")
             row.enabled = torch_installed and trellis_installed and not dll_error
-
-            layout.separator()
-
-        # ====================
-        # Import Last Generation (Common)
-        # ====================
-        box = layout.box()
-        row = box.row()
-        row.scale_y = 1.2
+            
+        # Import Last Generation (Always available)
+        layout.separator()
+        row = layout.row()
         row.operator("trellis.import_last_generation", icon='IMPORT', text="Import Last Generation")
+
+    def _draw_image_preview(self, layout, image_path):
+        try:
+            image_name = os.path.basename(image_path)
+            img = bpy.data.images.get(image_name)
+            if img is None:
+                img = bpy.data.images.load(image_path, check_existing=True)
+            
+            if img and img.size[0] > 0:
+                img.preview_ensure()
+                box = layout.box()
+                if img.preview and img.preview.icon_id > 0:
+                    col = box.column(align=True)
+                    col.template_icon(icon_value=img.preview.icon_id, scale=5.0)
+                box.label(text=f"{img.size[0]} x {img.size[1]} px", icon='INFO')
+        except:
+            pass
+
+
+class TRELLIS_PT_GenerationPanel(Panel):
+    """Generation Parameters Panel"""
+    bl_label = "Generation Settings"
+    bl_idname = "TRELLIS_PT_generation_panel"
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_parent_id = "TRELLIS_PT_main_panel"
+
+    def draw(self, context):
+        layout = self.layout
+        props = context.scene.trellis_props
+        
+        layout.prop(props, "seed", text="Random Seed")
+        
+        layout.separator()
+        
+        col = layout.column(align=True)
+        col.label(text="Stage 1: Sparse Structure")
+        col.prop(props, "sparse_steps", text="Steps")
+        col.prop(props, "sparse_cfg", text="CFG Strength")
 
         layout.separator()
 
-        # Output settings
-        box = layout.box()
-        box.label(text="Output Settings:", icon='EXPORT')
+        col = layout.column(align=True)
+        col.label(text="Stage 2: SLAT Appearance")
+        col.prop(props, "slat_steps", text="Steps")
+        col.prop(props, "slat_cfg", text="CFG Strength")
+        
+        layout.separator()
+        layout.prop(props, "generate_texture")
+        
+        layout.separator()
+        
+        col = layout.column(align=True)
+        col.label(text="Mesh Settings:")
+        col.prop(props, "texture_size")
+        col.prop(props, "simplify_mesh", slider=True)
+        
+        # Progress indicator
+        from .pipeline_manager import get_generation_progress
+        progress = get_generation_progress()
 
-        row = box.row()
+        if progress['active']:
+            layout.separator()
+            box = layout.box()
+            box.label(text="Generation Progress:", icon='TIME')
+            col = box.column(align=True)
+            col.label(text=f"Stage: {progress['stage']}", icon='SETTINGS')
+            if progress['total_steps'] > 0:
+                percentage = (progress['step'] / progress['total_steps']) * 100
+                col.label(text=f"Step: {progress['step']}/{progress['total_steps']} ({percentage:.1f}%)")
+            if progress['message']:
+                col.label(text=f"{progress['message']}", icon='INFO')
+
+
+class TRELLIS_PT_OutputPanel(Panel):
+    """Output Settings Panel"""
+    bl_label = "Output Settings"
+    bl_idname = "TRELLIS_PT_output_panel"
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_parent_id = "TRELLIS_PT_main_panel"
+
+    def draw(self, context):
+        layout = self.layout
+        props = context.scene.trellis_props
+
+        col = layout.column(align=True)
+        col.label(text="Formats:")
+        row = col.row(align=True)
         row.prop(props, "generate_mesh")
         row.prop(props, "generate_gaussian")
 
-        # Export quality settings
-        box.prop(props, "texture_size")
-        box.prop(props, "simplify_mesh", slider=True)
+        layout.separator()
 
-        box.separator()
-
-        box.prop(props, "center_object")
-        box.prop(props, "scale_object")
+        col = layout.column(align=True)
+        col.prop(props, "center_object")
+        col.prop(props, "scale_object")

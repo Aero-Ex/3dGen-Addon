@@ -208,6 +208,14 @@ class PipelineManager:
             # Set HuggingFace timeout (default is no timeout!)
             # This prevents indefinite hangs on slow/unreliable connections
             os.environ['HF_HUB_DOWNLOAD_TIMEOUT'] = '300'  # 5 minute timeout
+            
+            # Enable fast transfer if available
+            try:
+                import hf_transfer
+                os.environ['HF_HUB_ENABLE_HF_TRANSFER'] = '1'
+                print("✓ Enabled HF_TRANSFER for faster downloads")
+            except ImportError:
+                pass
 
             # LIGHTWEIGHT INITIALIZATION: Don't load pipelines yet!
             # Let them load lazily when actually needed to avoid crashing Blender
@@ -455,7 +463,7 @@ class PipelineManager:
 
             # Load image
             update_progress(stage="Preprocessing", step=0, total_steps=100, message="Loading image...")
-            image = Image.open(image_path).convert("RGB")
+            image = Image.open(image_path).convert("RGBA")
 
             if formats is None:
                 formats = ['mesh', 'gaussian']
@@ -562,7 +570,7 @@ class PipelineManager:
             # Load images
             update_progress(stage="Preprocessing", step=0, total_steps=100, message=f"Loading {len(image_paths)} images...")
             from PIL import Image
-            images = [Image.open(path).convert("RGB") for path in image_paths]
+            images = [Image.open(path).convert("RGBA") for path in image_paths]
 
             if formats is None:
                 formats = ['mesh', 'gaussian']
@@ -783,16 +791,56 @@ class PipelineManager:
 
             # Export to GLB
             print(f"Exporting to GLB: {output_path}")
-            glb_mesh = postprocessing_utils.to_glb(
-                appearance,
-                mesh,
-                simplify=simplify,
-                texture_size=texture_size,  # Use default (1024) for full quality
-                fill_holes=True,
-            )
-            glb_mesh.export(output_path)
-            print("GLB export successful!")
-            return True
+            
+            # If no appearance data (mesh-only mode), export without texture
+            if appearance is None:
+                print("Mesh-only mode: Exporting without texture baking")
+                # Create a simple mesh export without appearance
+                from trellis.representations import MeshExtractResult
+                from trimesh.exchange.gltf import export_glb as trimesh_export
+                import trimesh
+                
+                # Convert mesh to trimesh format
+                if hasattr(mesh, 'vertices') and hasattr(mesh, 'faces'):
+                    vertices = mesh.vertices.cpu().numpy() if hasattr(mesh.vertices, 'cpu') else mesh.vertices
+                    faces = mesh.faces.cpu().numpy() if hasattr(mesh.faces, 'cpu') else mesh.faces
+                    
+                    # Apply simplification if requested
+                    if simplify < 1.0:
+                        print(f"Simplifying mesh to {simplify*100:.1f}% faces...")
+                        try:
+                            import pyfqmr
+                            mesh_simplifier = pyfqmr.Simplify()
+                            mesh_simplifier.setMesh(vertices, faces)
+                            target_count = int(len(faces) * simplify)
+                            mesh_simplifier.simplify_mesh(target_count=target_count, aggressiveness=7, preserve_border=True, verbose=False)
+                            vertices, faces, _ = mesh_simplifier.getMesh()
+                            print(f"Simplified to {len(faces)} faces")
+                        except Exception as e:
+                            print(f"Simplification failed, using original mesh: {e}")
+                    
+                    # Create trimesh object
+                    tri_mesh = trimesh.Trimesh(vertices=vertices, faces=faces)
+                    
+                    # Export to GLB
+                    tri_mesh.export(output_path, file_type='glb')
+                    print("GLB export successful (mesh-only)!")
+                    return True
+                else:
+                    print("Error: Mesh format not recognized")
+                    return False
+            else:
+                # Normal texture baking export
+                glb_mesh = postprocessing_utils.to_glb(
+                    appearance,
+                    mesh,
+                    simplify=simplify,
+                    texture_size=texture_size,
+                    fill_holes=True,
+                )
+                glb_mesh.export(output_path)
+                print("GLB export successful!")
+                return True
 
         except Exception as e:
             print(f"Error exporting to GLB: {e}")

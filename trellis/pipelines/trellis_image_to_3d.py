@@ -119,22 +119,43 @@ class TrellisImageTo3DPipeline(Pipeline):
         Preprocess the input image.
         """
         # if has alpha channel, use it directly; otherwise, remove background
+        print(f"TRELLIS: Preprocessing image. Mode: {input.mode}")
         has_alpha = False
         if input.mode == 'RGBA':
             alpha = np.array(input)[:, :, 3]
             if not np.all(alpha == 255):
                 has_alpha = True
+        
+        print(f"TRELLIS: Has alpha: {has_alpha}")
+        
         if has_alpha:
+            print("TRELLIS: Skipping background removal (image already has transparency)")
             output = input
         else:
-            input = input.convert('RGB')
+            print("TRELLIS: Running background removal...")
+            # Convert RGBA to RGB with white background if needed
+            if input.mode == 'RGBA':
+                background = Image.new('RGB', input.size, (255, 255, 255))
+                background.paste(input, mask=input.split()[3])
+                input = background
+            else:
+                input = input.convert('RGB')
             max_size = max(input.size)
             scale = min(1, 1024 / max_size)
             if scale < 1:
                 input = input.resize((int(input.width * scale), int(input.height * scale)), Image.Resampling.LANCZOS)
-            if getattr(self, 'rembg_session', None) is None:
-                self.rembg_session = rembg.new_session('u2net')
-            output = rembg.remove(input, session=self.rembg_session)
+            
+            try:
+                if getattr(self, 'rembg_session', None) is None:
+                    print("TRELLIS: Initializing rembg session...")
+                    self.rembg_session = rembg.new_session('u2net')
+                output = rembg.remove(input, session=self.rembg_session)
+                print("TRELLIS: Background removal complete")
+            except Exception as e:
+                print(f"TRELLIS: Background removal FAILED: {e}")
+                import traceback
+                traceback.print_exc()
+                output = input # Fallback to original
         output_np = np.array(output)
         alpha = output_np[:, :, 3]
         bbox = np.argwhere(alpha > 0.8 * 255)
@@ -166,8 +187,19 @@ class TrellisImageTo3DPipeline(Pipeline):
         elif isinstance(image, list):
             assert all(isinstance(i, Image.Image) for i in image), "Image list should be list of PIL images"
             image = [i.resize((518, 518), Image.LANCZOS) for i in image]
-            image = [np.array(i.convert('RGB')).astype(np.float32) / 255 for i in image]
-            image = [torch.from_numpy(i).permute(2, 0, 1).float() for i in image]
+            # Handle RGBA images: composite onto white background
+            processed_images = []
+            for i in image:
+                if i.mode == 'RGBA':
+                    # Create white background
+                    background = Image.new('RGB', i.size, (255, 255, 255))
+                    # Composite image onto background using alpha channel
+                    background.paste(i, mask=i.split()[3])  # Use alpha channel as mask
+                    processed_images.append(np.array(background).astype(np.float32) / 255)
+                else:
+                    # Convert to RGB if not already
+                    processed_images.append(np.array(i.convert('RGB')).astype(np.float32) / 255)
+            image = [torch.from_numpy(i).permute(2, 0, 1).float() for i in processed_images]
             image = torch.stack(image)  # Don't move to device yet - will move inside context manager
         else:
             raise ValueError(f"Unsupported type of image: {type(image)}")
