@@ -1,0 +1,84 @@
+name: Build PartUV Wheel
+
+on:
+  workflow_dispatch:  # Manual trigger
+  push:
+    branches: [ build-part ]
+    paths:
+      - 'PartUV/**'
+      - '.github/workflows/build_partuv_wheel.yml'
+
+jobs:
+  build-wheel:
+    runs-on: windows-2022
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        submodules: 'recursive'
+    
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    
+    - name: Install CUDA Toolkit
+      uses: Jimver/cuda-toolkit@v0.2.14
+      with:
+        cuda: '12.4.0'
+        method: 'network'
+        sub-packages: '["nvcc", "cudart", "cublas", "cusparse"]'
+    
+    - name: Setup vcpkg
+      uses: lukka/run-vcpkg@v11
+      with:
+        vcpkgGitCommitId: 'f7423ee180c4b7f40d43402c2feb3859161ef625'
+        vcpkgDirectory: '${{ github.workspace }}/vcpkg'
+    
+    - name: Install C++ Dependencies via vcpkg
+      run: |
+        ${{ github.workspace }}/vcpkg/vcpkg install cgal:x64-windows tbb:x64-windows yaml-cpp:x64-windows
+      shell: pwsh
+    
+    - name: Install Python dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install numpy==1.26.4 scipy trimesh opencv-python==4.10.0.82 scikit-build-core pybind11 cmake ninja wheel
+      shell: pwsh
+    
+    - name: Download PartField Model
+      run: |
+        $modelPath = "PartUV/model_objaverse.ckpt"
+        if (-not (Test-Path $modelPath)) {
+          Write-Host "Downloading model checkpoint..."
+          Invoke-WebRequest -Uri "https://huggingface.co/mikaelaangel/partfield-ckpt/resolve/main/model_objaverse.ckpt" -OutFile $modelPath
+        }
+      shell: pwsh
+    
+    - name: Build PartUV Wheel
+      run: |
+        $env:CMAKE_GENERATOR = "Ninja"
+        $env:CMAKE_TOOLCHAIN_FILE = "${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake"
+        
+        cd PartUV
+        pip wheel . --no-build-isolation --wheel-dir ../wheels `
+          --config-settings=cmake.define.CMAKE_CUDA_COMPILER="$env:CUDA_PATH/bin/nvcc.exe" `
+          --config-settings=cmake.define.CUDAToolkit_ROOT="$env:CUDA_PATH" `
+          --config-settings=cmake.define.CMAKE_CUDA_FLAGS=--allow-unsupported-compiler `
+          -v
+      shell: pwsh
+    
+    - name: Upload Wheel as Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: partuv-wheel-windows-python311
+        path: wheels/*.whl
+        retention-days: 90
+    
+    - name: Upload Model Checkpoint
+      uses: actions/upload-artifact@v4
+      with:
+        name: partuv-model-checkpoint
+        path: PartUV/model_objaverse.ckpt
+        retention-days: 90
