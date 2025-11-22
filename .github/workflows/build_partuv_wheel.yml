@@ -57,8 +57,37 @@ jobs:
           cd C:\vcpkg
           .\bootstrap-vcpkg.bat
           
-          Write-Host "`n=== Installing C++ libraries ==="
-          .\vcpkg install cgal:x64-windows tbb:x64-windows yaml-cpp:x64-windows --clean-after-build
+          Write-Host "`n=== Installing C++ libraries with retry logic ==="
+          
+          # Function to install with retries
+          function Install-VcpkgPackage {
+              param($Package, $MaxRetries = 3)
+              
+              $attempt = 1
+              while ($attempt -le $MaxRetries) {
+                  Write-Host "Attempt $attempt/$MaxRetries for $Package..."
+                  try {
+                      .\vcpkg install $Package --clean-after-build
+                      Write-Host "[OK] $Package installed successfully"
+                      return $true
+                  } catch {
+                      Write-Host "[WARN] Attempt $attempt failed: $_"
+                      if ($attempt -eq $MaxRetries) {
+                          Write-Host "[ERROR] Failed to install $Package after $MaxRetries attempts"
+                          throw
+                      }
+                      Write-Host "Retrying in 10 seconds..."
+                      Start-Sleep -Seconds 10
+                  }
+                  $attempt++
+              }
+              return $false
+          }
+          
+          # Install packages with retry
+          Install-VcpkgPackage "cgal:x64-windows"
+          Install-VcpkgPackage "tbb:x64-windows"
+          Install-VcpkgPackage "yaml-cpp:x64-windows"
           
           Write-Host "`n=== vcpkg integration ==="
           .\vcpkg integrate install
