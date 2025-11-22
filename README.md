@@ -17,7 +17,7 @@
 - **📸 Multi-Image-to-3D**: Generate models from multiple reference images (TRELLIS)
 - **🔥 NEW: Direct3D-S2 Pipeline**: High-resolution mesh refinement and upscaling
   - 512³ resolution support (works on 6GB VRAM)
-  - 1024³ resolution support (requires 12GB+ VRAM)
+  - 1024³ resolution support (Optimized for 6GB+ VRAM)
   - Mesh upscaling from existing models
   - Advanced sparse attention optimization
 
@@ -38,7 +38,7 @@
 ### Hardware
 - **GPU**: NVIDIA GPU with CUDA support
   - **For 512³ Direct3D-S2**: 6GB+ VRAM (RTX 3060, RTX 4050, etc.)
-  - **For 1024³ Direct3D-S2**: 12GB+ VRAM (RTX 3080, RTX 4070+, etc.)
+  - **For 1024³ Direct3D-S2**: 6GB+ VRAM (via Extreme Offloading)
   - **TRELLIS Only**: 6GB+ VRAM sufficient
   - Tested on: RTX 4050 Laptop GPU (6GB)
   - Supported: RTX 20/30/40 series
@@ -51,10 +51,10 @@
 - **Internet Connection**: Required for initial setup
 - **C Compiler** (for Direct3D-S2):
   - **Option 1**: Use pre-compiled Triton cache (RTX 40 series only, included in repo)
-  - **Option 2**: Install [Microsoft Visual C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/)
-    - Required for Triton kernel compilation
-    - One-time ~5 minute install
-    - RTX 30 series users must install this
+  - **Option 2**: Install [Microsoft Visual C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) AND [CUDA Toolkit 12.4+](https://developer.nvidia.com/cuda-downloads)
+    - Required for Triton kernel compilation (JIT) on non-40 series GPUs
+    - One-time install
+    - RTX 20/30 series users must install both
 
 ## 📦 Installation
 
@@ -74,10 +74,12 @@
    - Navigate to the downloaded folder and select the addon folder
    - Enable the addon by checking the box next to "3D-Gen"
 
-3. **Install MSVC (RTX 30 series users only)**
+3. **Install Dependencies for Compilation (RTX 20/30 series users only)**
    - RTX 40 series can skip this (pre-compiled cache included)
-   - Download [Visual C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/)
-   - Install with "Desktop development with C++" workload
+   - **Step A**: Download & Install [Visual C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/)
+     - Select "Desktop development with C++" workload
+   - **Step B**: Download & Install [CUDA Toolkit 12.4+](https://developer.nvidia.com/cuda-downloads)
+     - Required for building Triton kernels
    - Restart your computer
 
 4. **Initial Setup**
@@ -141,7 +143,7 @@ xcopy /E /I "path\to\cloned\repo" "C:\Users\YourUsername\AppData\Roaming\Blender
 2. Select an input image
 3. Choose resolution:
    - **512³**: Works on 6GB VRAM (recommended for RTX 3060/4050)
-   - **1024³**: Requires 12GB+ VRAM (RTX 3080/4070+)
+   - **1024³**: High quality (Works on 6GB VRAM with Extreme Mode)
 4. Adjust refinement parameters:
    - **Steps** (5-30): Lower preserves input, higher refines more
    - **Guidance** (3-12): Lower preserves mesh, higher follows image
@@ -185,7 +187,7 @@ python upscale_in_console.py mesh.obj image.png --steps 25 --guidance 10.0 --res
 
 | Parameter | Description | Default | Range | Notes |
 |-----------|-------------|---------|-------|-------|
-| **Resolution** | Output resolution | 512³ | 512³, 1024³ | 512³=6GB VRAM, 1024³=12GB+ |
+| **Resolution** | Output resolution | 512³ | 512³, 1024³ | 512³=6GB, 1024³=6GB (Slow) |
 | **Steps** | Diffusion sampling steps | 15 | 5 - 30 | Lower=faster/preserve, Higher=quality |
 | **Guidance Scale** | Adherence to reference image | 7.0 | 3.0 - 12.0 | Lower=preserve mesh, Higher=follow image |
 | **Seed** | Random seed | 42 | -1 to 2³¹ | -1 for random |
@@ -327,7 +329,7 @@ Tested on **RTX 4050 Laptop GPU** (6GB VRAM):
 | Dense Sampling (15 steps) | ~8s | ~25s | ~3GB / ~8GB | Image encoding + diffusion |
 | Sparse Sampling (15 steps) | ~2-3s | ~8-10s | ~5GB / ~10GB | Sparse attention optimization |
 | Mesh Post-processing | ~1-2s | ~3-5s | ~2GB | Remeshing + simplification |
-| **Total (with remesh)** | **~10-12s** | **~35-45s** | **~5.8GB** | After first run |
+| **Total (with remesh)** | **~10-12s** | **~35-45s** (High VRAM) / **~6 mins** (6GB VRAM) | **~5.8GB** | After first run |
 
 ## 🤝 Contributing
 

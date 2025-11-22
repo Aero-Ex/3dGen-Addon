@@ -4,6 +4,10 @@ Usage: python upscale_in_console.py input_mesh.obj reference_image.png [options]
 """
 
 import os
+
+# Set memory management before importing torch
+os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'expandable_segments:True'
+
 import sys
 import argparse
 from pathlib import Path
@@ -144,6 +148,11 @@ Examples:
         import torch
         import trimesh
         from PIL import Image
+        
+        # Enable cuDNN benchmark for speed
+        if torch.cuda.is_available():
+            torch.backends.cudnn.benchmark = True
+            
         print(f"✓ PyTorch {torch.__version__}")
         print(f"✓ CUDA available: {torch.cuda.is_available()}")
         if torch.cuda.is_available():

@@ -12,6 +12,7 @@ FP16_MODULES = (
     sp.SparseConv3d,
     sp.SparseInverseConv3d,
     sp.SparseLinear,
+    nn.GroupNorm,
 )
 
 def convert_module_to_f16(l):
