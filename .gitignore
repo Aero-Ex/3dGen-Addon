@@ -1,0 +1,40 @@
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Virtual environments
+venv/
+env/
+*.egg-info/
+
+# Logs
+logs/
+*.log
+
+# IDE
+.vscode/
+.idea/
+.claude/
+
+# OS
+.DS_Store
+Thumbs.db
+nul
+
+# Triton cache (users will compile their own)
+.triton/
+triton_cache*/
+
+# Model weights (too large for git)
+*.pth
+*.safetensors
+*.ckpt
+
+# Output files
+*.obj
+*.ply
+*.stl
+*.glb
