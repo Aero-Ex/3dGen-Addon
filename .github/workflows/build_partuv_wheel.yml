@@ -1,84 +1,175 @@
-name: Build PartUV Wheel
+name: Build PartUV Binary Wheel (Windows CUDA 12.4)
 
 on:
-  workflow_dispatch:  # Manual trigger
   push:
-    branches: [ build-part ]
-    paths:
-      - 'PartUV/**'
-      - '.github/workflows/build_partuv_wheel.yml'
+    branches: [build-part]
+  pull_request:
+  workflow_dispatch:  # Allow manual trigger
 
 jobs:
-  build-wheel:
+  build_windows_binary:
     runs-on: windows-2022
-    
+    timeout-minutes: 150  # PartUV needs more time for vcpkg
+
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
-      with:
-        submodules: 'recursive'
-    
-    - name: Set up Python 3.11
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.11'
-    
-    - name: Install CUDA Toolkit
-      uses: Jimver/cuda-toolkit@v0.2.14
-      with:
-        cuda: '12.4.0'
-        method: 'network'
-        sub-packages: '["nvcc", "cudart", "cublas", "cusparse"]'
-    
-    - name: Setup vcpkg
-      uses: lukka/run-vcpkg@v11
-      with:
-        vcpkgGitCommitId: 'f7423ee180c4b7f40d43402c2feb3859161ef625'
-        vcpkgDirectory: '${{ github.workspace }}/vcpkg'
-    
-    - name: Install C++ Dependencies via vcpkg
-      run: |
-        ${{ github.workspace }}/vcpkg/vcpkg install cgal:x64-windows tbb:x64-windows yaml-cpp:x64-windows
-      shell: pwsh
-    
-    - name: Install Python dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install numpy==1.26.4 scipy trimesh opencv-python==4.10.0.82 scikit-build-core pybind11 cmake ninja wheel
-      shell: pwsh
-    
-    - name: Download PartField Model
-      run: |
-        $modelPath = "PartUV/model_objaverse.ckpt"
-        if (-not (Test-Path $modelPath)) {
-          Write-Host "Downloading model checkpoint..."
-          Invoke-WebRequest -Uri "https://huggingface.co/mikaelaangel/partfield-ckpt/resolve/main/model_objaverse.ckpt" -OutFile $modelPath
-        }
-      shell: pwsh
-    
-    - name: Build PartUV Wheel
-      run: |
-        $env:CMAKE_GENERATOR = "Ninja"
-        $env:CMAKE_TOOLCHAIN_FILE = "${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake"
-        
-        cd PartUV
-        pip wheel . --no-build-isolation --wheel-dir ../wheels `
-          --config-settings=cmake.define.CMAKE_CUDA_COMPILER="$env:CUDA_PATH/bin/nvcc.exe" `
-          --config-settings=cmake.define.CUDAToolkit_ROOT="$env:CUDA_PATH" `
-          --config-settings=cmake.define.CMAKE_CUDA_FLAGS=--allow-unsupported-compiler `
-          -v
-      shell: pwsh
-    
-    - name: Upload Wheel as Artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: partuv-wheel-windows-python311
-        path: wheels/*.whl
-        retention-days: 90
-    
-    - name: Upload Model Checkpoint
-      uses: actions/upload-artifact@v4
-      with:
-        name: partuv-model-checkpoint
-        path: PartUV/model_objaverse.ckpt
-        retention-days: 90
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install CUDA Toolkit 12.4
+        uses: Jimver/cuda-toolkit@v0.2.18
+        with:
+          cuda: '12.4.0'
+          method: 'network'
+          use-github-cache: false
+          use-local-cache: false
+
+      - name: Verify CUDA and Python
+        run: |
+          $ErrorActionPreference = 'Continue'
+          Write-Host "=== Python Version ==="
+          python --version
+          Write-Host "`n=== NVCC Version ==="
+          nvcc --version
+          Write-Host "`n=== CUDA Environment ==="
+          Write-Host "CUDA_PATH: $env:CUDA_PATH"
+          Write-Host "`n[OK] Verification complete"
+        shell: powershell
+        continue-on-error: true
+
+      - name: Install Python dependencies
+        run: |
+          pip install --upgrade pip
+          pip install numpy==1.26.4 scipy trimesh opencv-python==4.10.0.82
+          pip install scikit-build-core pybind11 cmake ninja wheel
+        shell: powershell
+
+      - name: Setup vcpkg for C++ dependencies
+        run: |
+          Write-Host "=== Cloning vcpkg ==="
+          git clone https://github.com/Microsoft/vcpkg.git C:\vcpkg
+          cd C:\vcpkg
+          .\bootstrap-vcpkg.bat
+          
+          Write-Host "`n=== Installing C++ libraries ==="
+          .\vcpkg install cgal:x64-windows tbb:x64-windows yaml-cpp:x64-windows --clean-after-build
+          
+          Write-Host "`n=== vcpkg integration ==="
+          .\vcpkg integrate install
+        shell: powershell
+
+      - name: Download PartField Model
+        run: |
+          $modelPath = "PartUV/model_objaverse.ckpt"
+          if (-not (Test-Path $modelPath)) {
+            Write-Host "Downloading model checkpoint..."
+            Invoke-WebRequest -Uri "https://huggingface.co/mikaelaangel/partfield-ckpt/resolve/main/model_objaverse.ckpt" -OutFile $modelPath
+          }
+        shell: powershell
+
+      - name: Build PartUV binary wheel
+        timeout-minutes: 120
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          Write-Host "=== Setting up MSVC environment ==="
+          $vsPath = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath
+          Write-Host "Visual Studio path: $vsPath"
+
+          Import-Module "$vsPath\Common7\Tools\Microsoft.VisualStudio.DevShell.dll"
+          Enter-VsDevShell -VsInstallPath $vsPath -SkipAutomaticLocation -DevCmdArguments "-arch=x64 -host_arch=x64"
+
+          Write-Host "Verifying cl.exe is now in PATH:"
+          where.exe cl.exe
+
+          Write-Host "`n=== Building binary wheel with CUDA extensions ==="
+          $env:CMAKE_GENERATOR = "Ninja"
+          $env:CMAKE_TOOLCHAIN_FILE = "C:\vcpkg\scripts\buildsystems\vcpkg.cmake"
+          
+          Write-Host "Build environment:"
+          Write-Host "  CUDA_PATH: $env:CUDA_PATH"
+          Write-Host "  CMAKE_GENERATOR: $env:CMAKE_GENERATOR"
+          Write-Host "  CMAKE_TOOLCHAIN_FILE: $env:CMAKE_TOOLCHAIN_FILE"
+          Write-Host ""
+
+          cd PartUV
+          
+          Write-Host "Starting build..."
+          pip wheel . --no-build-isolation --wheel-dir ../wheels `
+            --config-settings=cmake.define.CMAKE_CUDA_COMPILER="$env:CUDA_PATH/bin/nvcc.exe" `
+            --config-settings=cmake.define.CUDAToolkit_ROOT="$env:CUDA_PATH" `
+            --config-settings=cmake.define.CMAKE_CUDA_FLAGS=--allow-unsupported-compiler `
+            -v
+
+          if ($LASTEXITCODE -ne 0) {
+              Write-Host "`n=== BUILD FAILED (exit code: $LASTEXITCODE) ==="
+              exit $LASTEXITCODE
+          }
+
+          Write-Host "`n=== Build completed successfully ==="
+          Write-Host "`n=== Built wheel ==="
+          $wheels = Get-ChildItem ../wheels/*.whl
+          foreach ($wheel in $wheels) {
+              Write-Host "  Wheel: $($wheel.Name)"
+              Write-Host "  Size: $([math]::Round($wheel.Length / 1MB, 2)) MB"
+          }
+        shell: powershell
+
+      - name: Upload wheel artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: partuv-binary-wheel-py311-cu124-win_amd64
+          path: wheels/*.whl
+          retention-days: 90
+
+      - name: Upload model checkpoint
+        uses: actions/upload-artifact@v4
+        with:
+          name: partuv-model-checkpoint
+          path: PartUV/model_objaverse.ckpt
+          retention-days: 90
+
+      - name: Test wheel installation
+        run: |
+          Write-Host "=== Creating test environment ==="
+          python -m venv test_env
+          .\test_env\Scripts\Activate.ps1
+
+          Write-Host "`n=== Installing built wheel ==="
+          $wheel = Get-ChildItem wheels\*.whl | Select-Object -First 1
+          pip install numpy scipy trimesh opencv-python
+          pip install $wheel.FullName
+
+          Write-Host "`n=== Testing import ==="
+          python -c "import partuv; print('[OK] partuv imported successfully')"
+        shell: powershell
+
+      - name: Display build summary
+        run: |
+          Write-Host ""
+          Write-Host "=========================================="
+          Write-Host "BUILD SUCCESSFUL!"
+          Write-Host "=========================================="
+          Write-Host ""
+          Write-Host "Built wheel:"
+          $wheels = Get-ChildItem wheels\*.whl
+          foreach ($wheel in $wheels) {
+              $sizeMB = [math]::Round($wheel.Length / 1MB, 2)
+              Write-Host "  Wheel: $($wheel.Name)"
+              Write-Host "  Size: $sizeMB MB"
+          }
+          Write-Host ""
+          Write-Host "To download:"
+          Write-Host "  1. Go to Actions tab in GitHub"
+          Write-Host "  2. Click on this workflow run"
+          Write-Host "  3. Download artifacts from Artifacts section"
+          Write-Host ""
+          Write-Host "This is a TRUE BINARY WHEEL (cp311-cp311-win_amd64)"
+          Write-Host "No build tools required for installation!"
+        shell: powershell
