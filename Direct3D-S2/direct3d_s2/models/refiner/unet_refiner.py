@@ -424,20 +424,94 @@ class Voxel_RefinerXL_sign(nn.Module):
                             del inputs, mid_feat, final_feat, output, sdf
                             torch.cuda.empty_cache()
         outputs = outputs.repeat_interleave(2, dim=2).repeat_interleave(2, dim=3).repeat_interleave(2, dim=4)
-        sdfs = sdfs1024.clone()
-        sdfs = sdfs.abs()*outputs
         
+        # Memory Optimization: In-place update of sdfs1024 to save RAM
+        # sdfs1024 is [N, 1, 1024, 1024, 1024]
+        # outputs is [N, 1, 1024, 1024, 1024]
+        
+        # 1. Apply abs() in-place if possible, or re-assign
+        sdfs1024.abs_() 
+        
+        # 2. Multiply in-place
+        sdfs1024.mul_(outputs)
+        
+        # Free outputs immediately
+        del outputs
+        
+        # 3. Update sparse regions
         sparse_index1024 = reconst_x1024.coords
         
-        sdfs[sparse_index1024[...,0], :, sparse_index1024[...,1], sparse_index1024[...,2],sparse_index1024[...,3]] = sdfs1024[sparse_index1024[...,0], :, sparse_index1024[...,1], sparse_index1024[...,2], sparse_index1024[...,3]]
-        outputs = sdfs.cpu().numpy()
-        grid_size = outputs.shape[2]
-
+        # We need to use the original values from reconst_x1024 for the sparse regions
+        # reconst_x1024.feats is the sparse SDF values
+        # We can't easily do this in-place without a temporary tensor for the sparse values if we want to be exact,
+        # but let's try to minimize copies.
+        
+        # Extract sparse values
+        # reconst_x1024.feats is [N, 1], which matches the target slice [N, 1]
+        sparse_vals = reconst_x1024.feats
+        
+        # Assign to grid
+        sdfs1024[sparse_index1024[...,0], :, sparse_index1024[...,1], sparse_index1024[...,2], sparse_index1024[...,3]] = sparse_vals
+        
+        # Free sparse source data if possible (though it's small)
+        del reconst_x1024
+        
+        # Clean up GPU memory before moving to CPU
+        torch.cuda.empty_cache()
+        
+        # Move to CPU one by one to avoid holding all 1024^3 grids in RAM if batch_size > 1
+        # But sdfs1024 is already a full tensor.
+        
         meshes = []
-        for i in range(outputs.shape[0]):
-            outputs_torch = outputs[i,0]
-            vertices, faces, _, _ = measure.marching_cubes(outputs_torch, level=mc_threshold, method="lewiner")
-            vertices = vertices / grid_size * 2 - 1
-            meshes.append(trimesh.Trimesh(vertices, faces))
+        batch_size = sdfs1024.shape[0]
+        
+        import gc
+        
+        for i in range(batch_size):
+            # Extract single grid to CPU
+            # This creates a copy, but we can delete the GPU version slice if we were careful, 
+            # but sdfs1024 is one block.
+            
+            # To save RAM, we move the tensor to CPU, then delete the GPU one? 
+            # Or better: process on GPU if marching cubes supported it (it doesn't).
+            
+            # Strategy: Move one item to numpy, process, then delete.
+            
+            print(f"    [INFO] Extracting mesh {i+1}/{batch_size}...")
+            
+            # Force GC to clear any fragmentation
+            gc.collect()
+            
+            # Get the single grid as numpy array
+            # We use .detach().cpu().numpy() which creates a copy in RAM.
+            # sdfs1024 is on GPU (usually).
+            
+            grid_np = sdfs1024[i, 0].detach().cpu().numpy()
+            
+            # If sdfs1024 was on CPU, this is just a view or copy.
+            
+            # Run Marching Cubes
+            # This requires ~4GB for 1024^3 float32
+            try:
+                vertices, faces, _, _ = measure.marching_cubes(grid_np, level=mc_threshold, method="lewiner")
+                
+                # Normalize vertices
+                vertices = vertices / 1024 * 2 - 1
+                meshes.append(trimesh.Trimesh(vertices, faces))
+                
+                # Free the grid immediately
+                del grid_np
+                gc.collect()
+                
+            except Exception as e:
+                print(f"    [ERROR] Marching cubes failed: {e}")
+                # Try to recover/return empty mesh or partial
+                meshes.append(trimesh.Trimesh())
+
+        # Clean up the big tensor
+        del sdfs1024
+        torch.cuda.empty_cache()
+        gc.collect()
+        
         return meshes
 
