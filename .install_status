@@ -1,0 +1,2 @@
+failed
+Fatal error: ConsoleLogger.box() got multiple values for argument 'title'
