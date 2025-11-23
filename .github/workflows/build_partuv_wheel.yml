@@ -97,19 +97,15 @@ jobs:
       - name: Disable easy_profiler in CMakeLists (Windows incompatible)
         run: |
           cd PartUV
-          $file = 'CMakeLists.txt'
-          # Read, replace all easy_profiler related lines, write back
-          (Get-Content $file) | ForEach-Object {
-            $_ -replace '^find_package\(easy_profiler', '# find_package(easy_profiler' `
-               -replace '^    HINTS.*easy_profiler', '#     HINTS "${CMAKE_CURRENT_SOURCE_DIR}/extern/easy_profiler/lib/cmake/easy_profiler"' `
-               -replace '^\) *$', '# ) ' `
-               -replace '^get_target_property\(_EP_SO', '# get_target_property(_EP_SO' `
-               -replace '^  get_target_property\(_EP_SO', '#   get_target_property(_EP_SO' `
-               -replace '^if\(NOT _EP_SO\)', '# if(NOT _EP_SO)' `
-               -replace '^endif\(\)$', '# endif()', 1 `
-               -replace '^install\(FILES.*_EP_SO', '# install(FILES "${_EP_SO}" DESTINATION partuv/.libs)' `
-               -replace '^        easy_profiler', '    #     easy_profiler  # Disabled for Windows'
-          } | Set-Content $file -Encoding UTF8
+          (Get-Content CMakeLists.txt) -replace '^find_package\(easy_profiler REQUIRED$', '# find_package(easy_profiler REQUIRED' | Set-Content CMakeLists.txt -Encoding UTF8
+          (Get-Content CMakeLists.txt) -replace '^    HINTS.*easy_profiler', '#     HINTS "${CMAKE_CURRENT_SOURCE_DIR}/extern/easy_profiler/lib/cmake/easy_profiler"' | Set-Content CMakeLists.txt -Encoding UTF8
+          (Get-Content CMakeLists.txt) -replace '^\) $', '# ) ' | Set-Content CMakeLists.txt -Encoding UTF8
+          (Get-Content CMakeLists.txt) -replace '^get_target_property\(_EP_SO easy_profiler IMPORTED_LOCATION_RELEASE\)', '# get_target_property(_EP_SO easy_profiler IMPORTED_LOCATION_RELEASE)' | Set-Content CMakeLists.txt -Encoding UTF8
+          (Get-Content CMakeLists.txt) -replace '^if\(NOT _EP_SO\)$', '# if(NOT _EP_SO)' | Set-Content CMakeLists.txt -Encoding UTF8
+          (Get-Content CMakeLists.txt) -replace '^  get_target_property\(_EP_SO easy_profiler IMPORTED_LOCATION\)', '#   get_target_property(_EP_SO easy_profiler IMPORTED_LOCATION)' | Set-Content CMakeLists.txt -Encoding UTF8
+          (Get-Content CMakeLists.txt) -replace '^endif\(\)$', '# endif()' | Set-Content CMakeLists.txt -Encoding UTF8
+          (Get-Content CMakeLists.txt) -replace '^install\(FILES.*_EP_SO.*DESTINATION', '# install(FILES "${_EP_SO}" DESTINATION' | Set-Content CMakeLists.txt -Encoding UTF8
+          (Get-Content CMakeLists.txt) -replace '^        easy_profiler$', '    #     easy_profiler  # Disabled for Windows' | Set-Content CMakeLists.txt -Encoding UTF8
           Write-Host "easy_profiler disabled"
         shell: powershell
 
