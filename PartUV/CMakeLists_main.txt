@@ -1,0 +1,208 @@
+cmake_minimum_required(VERSION 3.10)
+
+set(CMAKE_CUDA_ARCHITECTURES 80 89 90)
+if(NOT DEFINED CMAKE_CUDA_COMPILER)
+  find_program(CMAKE_CUDA_COMPILER NAMES nvcc)
+  if(NOT CMAKE_CUDA_COMPILER)
+    set(CMAKE_CUDA_COMPILER /usr/local/cuda-12.1/bin/nvcc)
+    message(WARNING "Could not find 'nvcc' in PATH. Defaulting to /usr/local/cuda-12.1/bin/nvcc.")
+  endif()
+endif()
+
+
+project(YourProjectName LANGUAGES CXX CUDA)
+
+# Set up shared dependencies at the root level
+set(CMAKE_CXX_STANDARD 17)
+
+
+set(CMAKE_CUDA_STANDARD 14)
+set(CMAKE_CUDA_STANDARD_REQUIRED ON)
+# add_compile_definitions(CUDA_API_PER_THREAD_DEFAULT_STREAM=1)
+add_compile_definitions(CUDA_API_PER_THREAD_DEFAULT_STREAM)
+
+set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Choose the build type")
+# set(CMAKE_BUILD_TYPE "Debug" CACHE STRING "Choose the build type" FORCE)
+
+message(STATUS "CMake build type: ${CMAKE_BUILD_TYPE}")
+
+if(CMAKE_BUILD_TYPE STREQUAL "Release")
+    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -ffast-math -mfpmath=sse -Ofast -g -fno-omit-frame-pointer -march=native")
+elseif(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -g -O0")
+    add_compile_definitions(DEBUG_MODE)
+endif()
+
+option(ENABLE_PROFILING "Enable or disable profiling timers" ON)
+
+# Define paths to shared dependencies
+set(EXTERNAL_DIR "${CMAKE_CURRENT_SOURCE_DIR}/extern")
+# set(INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/include")
+set(SRC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src")
+
+set(LIBIGL_INCLUDE_DIR ${EXTERNAL_DIR}/libigl/include)
+set(EIGEN_INCLUDE_DIR ${EXTERNAL_DIR}/eigen-3.4.0)
+set(OPENABF_INCLUDE_DIR ${EXTERNAL_DIR}/OpenABF/include)
+set(STB_INCLUDE_DIR ${EXTERNAL_DIR}/stb)
+set(UVPSDK_ROOT "${EXTERNAL_DIR}/uvpackmaster"          # extern/uvpackmaster
+    CACHE PATH "Path to UVPackmaster SDK (include/ + lib/)")
+set(NLOHMANN_JSON_INCLUDE_DIR ${EXTERNAL_DIR}/json/include)
+
+# find_path(UVPCORE_INCLUDE_DIR
+# NAMES uvpCore.hpp
+# PATHS "${UVPSDK_ROOT}/include"
+# NO_DEFAULT_PATH REQUIRED)
+
+# find_library(UVPCORE_LIBRARY
+#        NAMES uvpcore libuvpcore
+#        PATHS "${UVPSDK_ROOT}/lib"
+#        NO_DEFAULT_PATH REQUIRED)
+
+# add_library(uvpcore_sdk SHARED IMPORTED GLOBAL)
+# set_target_properties(uvpcore_sdk PROPERTIES
+#         IMPORTED_LOCATION             "${UVPCORE_LIBRARY}"
+#         INTERFACE_INCLUDE_DIRECTORIES "${UVPCORE_INCLUDE_DIR}")
+
+
+# Make these paths available to all subprojects
+include_directories(
+    ${LIBIGL_INCLUDE_DIR}
+    ${EIGEN_INCLUDE_DIR}
+    ${STB_INCLUDE_DIR}
+    ${OPENABF_INCLUDE_DIR}
+    ${NLOHMANN_JSON_INCLUDE_DIR}
+)
+
+# include_directories(${EXTERNAL_DIR}/pybind11/include)
+# include_directories("/usr/include/suitesparse")
+# Find common dependencies
+
+find_package(CGAL REQUIRED)
+find_package(easy_profiler REQUIRED
+    HINTS "${CMAKE_CURRENT_SOURCE_DIR}/extern/easy_profiler/lib/cmake/easy_profiler"
+)  # STEP 1 #########################
+find_package(yaml-cpp REQUIRED)
+find_package(OpenMP REQUIRED)
+find_package(TBB REQUIRED)
+find_package(CUDAToolkit REQUIRED) 
+
+# Find pybind11 for Python bindings
+# find_package(pybind11 CONFIG REQUIRED)
+
+# include_directories($ENV{CONDA_PREFIX}/include)
+
+# find_package(pybind11 CONFIG REQUIRED)
+# find_package(pybind11 REQUIRED)
+# MKL setup (shared across subprojects)
+# set(MKL_ARCH intel64)
+# set(MKL_INTERFACE lp64)
+# find_package(MKL HINTS "$ENV{CONDA_PREFIX}")
+
+# if(MKL_FOUND)
+#     include_directories(${MKL_INCLUDE})
+#     add_definitions(-DEIGEN_USE_MKL_ALL)
+#     set(MKL_LIBS pthread m dl)
+# else()
+#     message("MKL not found, using Eigen solvers")
+# endif()
+
+# Add the LSCM library subdirectory
+add_subdirectory(${SRC_DIR}/lscm)
+target_compile_options(lscm_lib PUBLIC -fPIC)
+add_subdirectory(${SRC_DIR}/triangle_intersection)
+target_compile_options(triangle_intersection PUBLIC -fPIC)
+# add_subdirectory(${EXTERNAL_DIR}/pybind11)
+
+# Collect source files:
+# 1. Add main.cpp from the project root
+option(USE_ALL_SRC_FILES "Use all .cpp files in src directory" ON)
+
+if(USE_ALL_SRC_FILES)
+    # file(GLOB_RECURSE SOURCES "${SRC_DIR}/*.cpp")
+    # file(GLOB_RECURSE CUDA_SOURCES "${SRC_DIR}/*.cu")
+    file(GLOB SOURCES "${SRC_DIR}/*.cpp")
+    file(GLOB CUDA_SOURCES "${SRC_DIR}/*.cu")
+    list(APPEND SOURCES ${CUDA_SOURCES})
+    message(STATUS "Using all source files in ${SRC_DIR}")
+else()
+    set(SOURCES
+        "${SRC_DIR}/Distortion.cpp"
+        "${SRC_DIR}/IO.cpp"
+    )
+    message(STATUS "Using selected source files only")
+endif()
+
+
+
+set(MAIN_FILE "main.cpp" CACHE STRING "Main source file (e.g., main.cpp, main-heuristic.cpp, main-abf.cpp)")
+# Add possible values for GUI users
+set_property(CACHE MAIN_FILE PROPERTY STRINGS "main.cpp" "main-heuristic.cpp" "main-abf.cpp")
+
+
+set(MAIN_SOURCES "${PROJECT_SOURCE_DIR}/${MAIN_FILE}")
+# set(MAIN_SOURCES ${PROJECT_SOURCE_DIR}/main.cpp)
+# set(MAIN_SOURCES ${PROJECT_SOURCE_DIR}/main-heuristic.cpp)
+# set(MAIN_SOURCES ${PROJECT_SOURCE_DIR}/main-abf.cpp)
+
+# Verify main file exists
+if(NOT EXISTS "${MAIN_SOURCES}")
+message(FATAL_ERROR "Main source file '${MAIN_FILE}' not found in project root directory")
+endif()
+message(STATUS "Main source file: ${MAIN_SOURCES}")
+
+
+
+set(ENV{OMP_NUM_THREADS} "8")
+
+# 2. Append all .cpp files from the src directory
+list(APPEND SOURCES ${MAIN_SOURCES})
+
+# Create the main executable
+add_executable(program ${SOURCES})
+
+
+
+# --- allow device‐side lambdas & cross‐TU __device__ calls ---
+set_target_properties(program PROPERTIES
+  CUDA_SEPARABLE_COMPILATION ON
+)
+target_compile_definitions(program PRIVATE CUDA_API_PER_THREAD_DEFAULT_STREAM)
+
+# --- pass NVCC flags only when compiling CUDA code ---
+target_compile_options(program PRIVATE
+  $<$<COMPILE_LANGUAGE:CUDA>:
+    --expt-extended-lambda      # enable __device__ lambdas
+    --expt-relaxed-constexpr    # (optional) allows constexpr on device
+    --default-stream=per-thread 
+  >
+)
+
+
+
+if(ENABLE_PROFILING)
+    target_compile_definitions(program INTERFACE ENABLE_PROFILING)
+    message(STATUS "Profiling enabled.")
+else()
+    message(STATUS "Profiling disabled.")
+endif()
+
+target_include_directories(program PRIVATE 
+    # ${CMAKE_CURRENT_SOURCE_DIR}/include 
+    ${CMAKE_CURRENT_SOURCE_DIR}/src)
+
+# Link against LSCM library and other dependencies
+target_link_libraries(program
+    PUBLIC
+        easy_profiler
+        # uvpcore_sdk          
+        # cholmod
+    PRIVATE
+        lscm_lib
+        triangle_intersection
+        OpenMP::OpenMP_CXX
+        # $<LINK_ONLY:MKL::MKL>
+        yaml-cpp
+        TBB::tbb
+        CUDA::cudart
+
+)

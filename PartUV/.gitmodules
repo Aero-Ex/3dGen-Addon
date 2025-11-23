@@ -1,0 +1,12 @@
+[submodule "json"]
+	path = extern/json
+	url = https://github.com/nlohmann/json
+[submodule "extern/eigen-3.4.0"]
+	path = extern/eigen-3.4.0
+	url = https://gitlab.com/libeigen/eigen.git
+[submodule "libigl"]
+	path = extern/libigl
+	url = https://github.com/libigl/libigl
+[submodule "stb"]
+	path = extern/stb
+	url = https://github.com/nothings/stb.git
