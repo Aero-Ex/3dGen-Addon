@@ -94,10 +94,13 @@ jobs:
           .\vcpkg integrate install
         shell: powershell
 
-      - name: Apply Windows build patches
+      - name: Disable easy_profiler in CMakeLists (Windows incompatible)
         run: |
-          Write-Host "Applying Windows-specific patches..."
-          git apply --ignore-whitespace partuv_windows.patch
+          cd PartUV
+          # Simply comment out the two easy_profiler references that cause build failure
+          (Get-Content CMakeLists.txt) -replace 'find_package\(easy_profiler', '# find_package(easy_profiler' | Set-Content CMakeLists.txt -Encoding UTF8
+          (Get-Content CMakeLists.txt) -replace '^\s+easy_profiler\s*$', '    #     easy_profiler  # Disabled for Windows' | Set-Content CMakeLists.txt -Encoding UTF8
+          Write-Host "easy_profiler disabled"
         shell: powershell
 
 
