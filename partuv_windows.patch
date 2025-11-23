@@ -1,0 +1,48 @@
+--- a/PartUV/CMakeLists.txt
++++ b/PartUV/CMakeLists.txt
+@@ -30,7 +30,12 @@ set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Choose the build type")
+ 
+ # message(STATUS "CMake build type: ${CMAKE_BUILD_TYPE}")
+ 
+-set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -ffast-math -mfpmath=sse -Ofast -fno-omit-frame-pointer -march=native")
++# Platform-specific optimization flags
++if(MSVC)
++  set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /O2 /fp:fast /GL")
++else()
++  set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -ffast-math -mfpmath=sse -Ofast -fno-omit-frame-pointer -march=native")
++endif()
+ # if(CMAKE_BUILD_TYPE STREQUAL "Release")
+ # elseif(CMAKE_BUILD_TYPE STREQUAL "Debug")
+ #     set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -g -O0")
+@@ -88,11 +93,11 @@ include_directories(
+ # Find common dependencies
+ 
+ find_package(CGAL REQUIRED)
+-find_package(easy_profiler REQUIRED
+-    HINTS "${CMAKE_CURRENT_SOURCE_DIR}/extern/easy_profiler/lib/cmake/easy_profiler"
+-) 
+-get_target_property(_EP_SO easy_profiler IMPORTED_LOCATION_RELEASE)
+-if(NOT _EP_SO)
+-  get_target_property(_EP_SO easy_profiler IMPORTED_LOCATION)  # fallback if only generic set
+-endif()
+-install(FILES "${_EP_SO}" DESTINATION partuv/.libs)
++# easy_profiler disabled for Windows build (CMake config looks for .so instead of .dll)
++# find_package(easy_profiler REQUIRED
++#     HINTS "${CMAKE_CURRENT_SOURCE_DIR}/extern/easy_profiler/lib/cmake/easy_profiler"
++# ) 
++# get_target_property(_EP_SO easy_profiler IMPORTED_LOCATION_RELEASE)
++# if(NOT _EP_SO)
++#   get_target_property(_EP_SO easy_profiler IMPORTED_LOCATION)  # fallback if only generic set
++# endif()
++# install(FILES "${_EP_SO}" DESTINATION partuv/.libs)
+@@ -176,8 +181,8 @@ target_compile_options(_core PRIVATE
+ )
+ # Link the Python module with the same dependencies as the main executable
+ target_link_libraries(_core
+-    PUBLIC
+-        easy_profiler
++    # PUBLIC
++    #     easy_profiler  # Disabled for Windows build
+         # uvpcore_sdk          
+     PRIVATE
+         lscm_lib
