@@ -46,7 +46,8 @@ jobs:
       - name: Install Python dependencies
         run: |
           pip install --upgrade pip
-          pip install numpy==1.26.4 scipy trimesh opencv-python==4.10.0.82
+          pip install numpy==1.26.4 --no-deps
+          pip install scipy trimesh opencv-python==4.10.0.82
           pip install scikit-build-core pybind11 cmake ninja wheel
         shell: powershell
 
@@ -91,6 +92,12 @@ jobs:
           
           Write-Host "`n=== vcpkg integration ==="
           .\vcpkg integrate install
+        shell: powershell
+
+      - name: Apply Windows build patches
+        run: |
+          Write-Host "Applying Windows-specific patches..."
+          git apply --ignore-whitespace partuv_windows.patch
         shell: powershell
 
 
