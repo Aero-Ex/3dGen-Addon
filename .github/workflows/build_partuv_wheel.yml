@@ -93,14 +93,7 @@ jobs:
           .\vcpkg integrate install
         shell: powershell
 
-      - name: Download PartField Model
-        run: |
-          $modelPath = "PartUV/model_objaverse.ckpt"
-          if (-not (Test-Path $modelPath)) {
-            Write-Host "Downloading model checkpoint..."
-            Invoke-WebRequest -Uri "https://huggingface.co/mikaelaangel/partfield-ckpt/resolve/main/model_objaverse.ckpt" -OutFile $modelPath
-          }
-        shell: powershell
+
 
       - name: Build PartUV binary wheel
         timeout-minutes: 120
@@ -155,13 +148,6 @@ jobs:
         with:
           name: partuv-binary-wheel-py311-cu124-win_amd64
           path: wheels/*.whl
-          retention-days: 90
-
-      - name: Upload model checkpoint
-        uses: actions/upload-artifact@v4
-        with:
-          name: partuv-model-checkpoint
-          path: PartUV/model_objaverse.ckpt
           retention-days: 90
 
       - name: Test wheel installation
