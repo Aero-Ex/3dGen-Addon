@@ -1,0 +1,23 @@
+[build-system]
+requires = ["scikit-build-core>=0.10", "pybind11>=2.11", "numpy", "ninja"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "partuv"
+version = "0.1.0"
+description = "UV unwrapping pipeline with pybind11 bindings and preprocessing utilities"
+readme = "README.md"
+requires-python = ">=3.9"
+authors = [{ name = "Your Name" }]
+dependencies = [
+  "numpy",
+  "trimesh",
+  "scipy",
+  "opencv-python"
+]
+
+[tool.scikit-build]
+cmake.verbose = true
+ninja.make-fallback = true
+
+wheel.packages = ["partuv", "preprocess_utils"]

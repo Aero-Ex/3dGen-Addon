@@ -1,0 +1,74 @@
+cmake_minimum_required(VERSION 3.1)
+project(LSCM)
+set(CMAKE_CXX_STANDARD 11)
+
+# Default build type
+# if(NOT CMAKE_BUILD_TYPE)
+#     set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Choose the build type (e.g. Debug or Release)" FORCE)
+# endif()
+
+set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Choose the build type (e.g. Debug or Release)" FORCE)
+# set(CMAKE_BUILD_TYPE "Debug" CACHE STRING "Choose the build type (e.g. Debug or Release)" FORCE)
+# Optimization flags
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE}  -ffast-math -mfpmath=sse -Ofast -march=native")
+# set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -g")
+
+
+# Include directories
+include_directories(src)
+include_directories(
+    /ariesdv0/zhaoning/workspace/IUV/lscm/libigl-example-project/extern/libigl/include
+    /ariesdv0/zhaoning/workspace/IUV/lscm/libigl-example-project/extern/eigen-3.4.0
+)
+
+find_package(OpenMP REQUIRED)
+
+# Tell CMake explicitly about conda environment paths
+include_directories("$ENV{CONDA_PREFIX}/include")
+link_directories("$ENV{CONDA_PREFIX}/lib")
+
+set(MKL_ARCH intel64)
+set(MKL_INTERFACE lp64)
+
+find_package(MKL HINTS "$ENV{CONDA_PREFIX}")
+
+if(MKL_FOUND)
+    include_directories(${MKL_INCLUDE})
+    set(LINKED_LIBS "${LINKED_LIBS};${MKL_LIBRARIES}")
+    # add_definitions(-DMKL_ILP64)
+    add_definitions(-DEIGEN_USE_MKL_ALL)
+    
+    set(MKL_LIBS  pthread m dl)
+else()
+    message("MKL not found, using Eigen solvers")
+endif()
+
+set(SOURCES
+    src/Boundary.cpp
+    src/Edge.cpp
+    src/Face.cpp
+    src/FormTrait.cpp
+    src/LSCM.cpp
+    src/HalfEdge.cpp
+    src/Homology.cpp
+    src/Mesh.cpp
+    src/Point.cpp
+    src/Vertex.cpp
+    src/Graph.cpp
+)
+
+add_executable(main test.cpp ${SOURCES})
+# add_executable(main main-ruoxi.cpp ${SOURCES})
+
+# target_link_libraries(main ${LINKED_LIBS})
+target_compile_options(main PUBLIC $<TARGET_PROPERTY:MKL::MKL,INTERFACE_COMPILE_OPTIONS>)
+target_include_directories(main PUBLIC $<TARGET_PROPERTY:MKL::MKL,INTERFACE_INCLUDE_DIRECTORIES>)
+target_link_libraries(main PUBLIC $<LINK_ONLY:MKL::MKL>)
+target_link_libraries(main PRIVATE OpenMP::OpenMP_CXX)
+
+# target_link_libraries(main ${MKL_LIBS})
+
+# target_link_libraries(main PUBLIC Eigen3::Eigen)
+# target_compile_options(main PUBLIC $<TARGET_PROPERTY:MKL::MKL,INTERFACE_COMPILE_OPTIONS>)
+# target_include_directories(main PUBLIC $<TARGET_PROPERTY:MKL::MKL,INTERFACE_INCLUDE_DIRECTORIES>)
+# target_link_libraries(main PUBLIC $<LINK_ONLY:MKL::MKL>)
